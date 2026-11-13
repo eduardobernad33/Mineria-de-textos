@@ -1,21 +1,3 @@
-"""Genera el dataset de vehículos en Esperanto a partir de Wikipedia.
-
-Uso (desde la raíz del repositorio):
-    pip install -e ".[data]"
-    python scripts/build_dataset.py
-
-Salidas:
-    data/dataset.csv   -> contrato de datos: UTF-8, separador ';', cabecera text;class
-    data/metadata.csv  -> text;class;articulo;fuente (para partir train/test por artículo
-                          y citar la revisión exacta de Wikipedia de cada párrafo)
-
-Si algún artículo falla, se guarda data/dataset_parcial.csv y el script avisa.
-Las revisiones de Wikipedia están fijadas (oldid) y la semilla es 42: el resultado es reproducible.
-Textos: Wikipedia en esperanto, licencia CC BY-SA 4.0.
-"""
-
-# =============================================================================
-# Texto original del cuaderno de Colab (portada)
 # =============================================================================
 # # Vehículos · Construcción del dataset
 # **Minería de Textos · Fase 1 · Versión ampliada**
@@ -23,32 +5,31 @@ Textos: Wikipedia en esperanto, licencia CC BY-SA 4.0.
 # Este cuaderno crea una tabla de párrafos en esperanto sobre coches, aviones y trenes.
 # Cada fila tiene el párrafo original limpio y el tema que le corresponde.
 #
-# **En Colab:** abre este archivo y selecciona **Entorno de ejecución → Ejecutar
-# todo**. Al terminar, la última celda indica el nombre del archivo guardado. Búscalo
-# en el panel **Archivos** de la izquierda. Cada sección explica qué hace la celda de
-# código que aparece debajo.
+# **En Colab:** abre este archivo y selecciona **Entorno de ejecución → Ejecutar todo**.
+# Al terminar, la última celda indica el nombre del archivo guardado. Búscalo en el
+# panel **Archivos** de la izquierda. Cada sección explica qué hace la celda de código
+# que aparece debajo.
+# =============================================================================
 
 # =============================================================================
 # ## 1. Elegir de dónde salen los textos
 #
 # La lista conserva los artículos del piloto y añade nuevas páginas de Wikipedia en
 # esperanto. Al leer un artículo del grupo de coches, el programa pone la etiqueta
-# **coches** a sus párrafos. Los identificadores de revisión permiten recuperar la
-# misma versión de cada artículo. Un título nuevo se puede añadir a la lista para
-# consultar su versión actual.
+# **coches** a sus párrafos. Los identificadores de revisión permiten recuperar la misma
+# versión de cada artículo. Un título nuevo se puede añadir a la lista para consultar su
+# versión actual.
 # =============================================================================
 
 import random
 import re
-from urllib.parse import quote
+import time
 import unicodedata
 from pathlib import Path
 
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 ARTICULOS = {'coches': ['Aŭto',
             'Toyota Prius',
@@ -373,7 +354,6 @@ ARTICULOS_PILOTO = ('Aŭto',
 MAXIMO_POR_ARTICULO = 32
 
 
-
 # =============================================================================
 # ## 2. Descargar las páginas de Wikipedia
 #
@@ -388,61 +368,85 @@ MAXIMO_POR_ARTICULO = 32
 # =============================================================================
 
 WIKIPEDIA = "https://eo.wikipedia.org"
+API_WIKIPEDIA = f"{WIKIPEDIA}/w/api.php"
+CABECERAS = {
+    "User-Agent": "CUNEF-Vehiculos/0.4 (https://github.com/eduardobernad33/Mineria-de-textos)"
+}
+TIEMPO_MAXIMO = 30
+INTENTOS = 5
+PAUSA = 1
+ESPERA_MAXIMA = 60
 
-sesion = requests.Session()
-sesion.headers["User-Agent"] = "CUNEF-Vehiculos/0.2 (Practica docente de Mineria de Textos)"
-reintentos = Retry(total=1, backoff_factor=0.5, status_forcelist=[429, 500, 502, 503, 504])
-sesion.mount("https://", HTTPAdapter(max_retries=reintentos))
+def calcular_espera(respuesta, intento):
+    retry_after = respuesta.headers.get("Retry-After", "")
+    if retry_after.isdigit():
+        return min(int(retry_after), ESPERA_MAXIMA)
+    return min(5 * intento, ESPERA_MAXIMA)
+
+def pedir_a_la_api(parametros):
+    for intento in range(1, INTENTOS + 1):
+        try:
+            respuesta = requests.get(
+                API_WIKIPEDIA, params=parametros, headers=CABECERAS, timeout=TIEMPO_MAXIMO
+            )
+            if respuesta.status_code == 429 and intento < INTENTOS:
+                time.sleep(calcular_espera(respuesta, intento))
+                continue
+            respuesta.raise_for_status()
+            return respuesta.json()
+        except requests.RequestException:
+            if intento == INTENTOS:
+                raise
+            time.sleep(min(5 * intento, ESPERA_MAXIMA))
 
 def descargar_articulo(titulo):
+    parametros = {
+        "action": "parse",
+        "prop": "text|revid",
+        "disableeditsection": 1,
+        "format": "json",
+        "formatversion": 2,
+    }
     revision = REVISIONES.get(titulo)
     if revision is None:
-        nombre = quote(titulo.replace(" ", "_"), safe="")
-        respuesta = sesion.get(f"{WIKIPEDIA}/wiki/{nombre}", timeout=(5, 15))
+        parametros["page"] = titulo
+        parametros["redirects"] = 1
     else:
-        respuesta = sesion.get(
-            f"{WIKIPEDIA}/w/index.php",
-            params={"title": titulo.replace(" ", "_"), "oldid": revision},
-            timeout=(5, 15),
-        )
-    respuesta.raise_for_status()
+        parametros["oldid"] = revision
 
-    sopa = BeautifulSoup(respuesta.content, "html.parser")
-    cuerpo = sopa.select_one("#mw-content-text .mw-parser-output")
-    if cuerpo is None:
-        raise ValueError("No se encontró el texto principal del artículo.")
+    datos = pedir_a_la_api(parametros)
+    time.sleep(PAUSA)
+    if "error" in datos:
+        raise ValueError(datos["error"].get("info", "La API devolvió un error."))
 
-    permanente = sopa.select_one("#t-permalink a")
-    coincidencia = re.search(r"[?&]oldid=(\d+)", permanente.get("href", "")) if permanente else None
-    if coincidencia is None:
-        raise ValueError("No se pudo identificar la revisión del artículo.")
-    revision_descargada = int(coincidencia.group(1))
+    html = datos["parse"]["text"]
+    revision_descargada = datos["parse"]["revid"]
     if revision is not None and revision_descargada != revision:
         raise ValueError("Wikipedia devolvió una revisión distinta de la solicitada.")
 
     enlace = f"{WIKIPEDIA}/w/index.php?oldid={revision_descargada}"
-    return str(cuerpo), enlace
+    return html, enlace
 
 
 # =============================================================================
 # ## 3. Separar y limpiar los párrafos
 #
-# Beautiful Soup lee la estructura de la página. Así podemos quedarnos con los
-# párrafos y saltar tablas, fichas, listas, imágenes y referencias. Si una palabra
-# tiene un enlace, conservamos la palabra y quitamos el enlace. Sustituimos los puntos y
-# coma que estén dentro del texto por comas, porque el punto y coma se usa para separar
-# las dos columnas del archivo.
+# Beautiful Soup lee la estructura de la página. Así podemos quedarnos con los párrafos
+# y saltar tablas, fichas, listas, imágenes y referencias. Si una palabra tiene un
+# enlace, conservamos la palabra y quitamos el enlace. Sustituimos los puntos y coma que
+# estén dentro del texto por comas, porque el punto y coma se usa para separar las dos
+# columnas del archivo.
 #
 # Para preparar el texto, descartamos bloques de menos de seis palabras, frases que solo
-# presentan una lista y, en el artículo *Trajno*, la sección sobre otros significados
-# de la palabra «tren». También excluimos pasajes concretos del artículo de coches
+# presentan una lista y, en el artículo *Trajno*, la sección sobre otros significados de
+# la palabra «tren». También excluimos pasajes concretos del artículo de coches
 # eléctricos que tratan de trolebuses, furgonetas o carritos de golf. Estos filtros se
 # aplican al descargar los artículos. Todavía puede quedar algún párrafo demasiado
 # general que convenga revisar a mano.
 #
-# En las páginas más amplias, seleccionamos los bloques sobre vehículos. Limitamos a
-# 32 párrafos por artículo nuevo para repartir el peso entre más fuentes. La
-# selección usa siempre la misma semilla, 42, para poder repetirla.
+# En las páginas más amplias, seleccionamos los bloques sobre vehículos. Limitamos a 32
+# párrafos por artículo nuevo para repartir el peso entre más fuentes. La selección usa
+# siempre la misma semilla, 42, para poder repetirla.
 # =============================================================================
 
 SECCIONES_OMITIDAS = {
@@ -463,20 +467,29 @@ INICIOS_OMITIDOS = {
         "En 2001-2002 la kompanio Bronto",
     ),
 }
-RUIDO = (
-    "table, figure, figcaption, ul, ol, dl, blockquote, script, style, "
-    ".infobox, .navbox, .thumb, .hatnote, .ambox, .reflist, .mw-editsection, "
-    ".mw-ref, sup.reference, .mw-cite-backlink, .mw-ext-cite-error, "
-    "[typeof~='mw:Extension/ref'], [typeof~='mw:Extension/references']"
-)
+ETIQUETAS_RUIDO = [
+    "table", "figure", "figcaption", "ul", "ol", "dl", "blockquote", "script", "style",
+]
+CLASES_RUIDO = [
+    "infobox", "navbox", "thumb", "hatnote", "ambox", "reflist", "mw-editsection",
+    "mw-ref", "reference", "mw-cite-backlink", "mw-ext-cite-error",
+]
+TYPEOF_RUIDO = re.compile(r"mw:Extension/ref")
 ENCABEZADOS = {"h2", "h3", "h4", "h5", "h6"}
+
+def quitar_ruido(raiz):
+    candidatos = raiz.find_all(ETIQUETAS_RUIDO)
+    for clase in CLASES_RUIDO:
+        candidatos += raiz.find_all(attrs={"class": clase})
+    candidatos += raiz.find_all(attrs={"typeof": TYPEOF_RUIDO})
+    for elemento in candidatos:
+        if not elemento.decomposed:
+            elemento.decompose()
 
 def extraer_parrafos(html, titulo):
     sopa = BeautifulSoup(html, "html.parser")
-    raiz = sopa.select_one(".mw-parser-output") or sopa
-    for elemento in raiz.select(RUIDO):
-        if elemento.parent is not None:
-            elemento.decompose()
+    raiz = sopa.find("div", {"class": "mw-parser-output"}) or sopa
+    quitar_ruido(raiz)
 
     omitidas = SECCIONES_OMITIDAS | SECCIONES_POR_ARTICULO.get(titulo, set())
     nivel_omitido = None
@@ -486,7 +499,7 @@ def extraer_parrafos(html, titulo):
         if nodo.name in ENCABEZADOS:
             nivel = int(nodo.name[1])
             if nivel_omitido is None or nivel <= nivel_omitido:
-                titulo_seccion = nodo.get_text(" ", strip=True).casefold()
+                titulo_seccion = nodo.get_text(" ", strip=True).lower()
                 nivel_omitido = nivel if titulo_seccion in omitidas else None
             continue
         if nivel_omitido is not None:
@@ -500,7 +513,7 @@ def extraer_parrafos(html, titulo):
         texto = " ".join(texto.replace(";", ",").split())
         if len(texto.split()) < 6 or texto.endswith(":"):
             continue
-        if texto.casefold().startswith(("vidu ankaŭ", "dosiero:", "arkivigite je")):
+        if texto.lower().startswith(("vidu ankaŭ", "dosiero:", "arkivigite je")):
             continue
         if texto.startswith(INICIOS_OMITIDOS.get(titulo, ())):
             continue
@@ -552,7 +565,6 @@ def seleccionar_parrafos(parrafos, titulo):
     return parrafos
 
 
-
 # =============================================================================
 # ## 4. Poner el tema y comprobar los resultados
 #
@@ -561,26 +573,16 @@ def seleccionar_parrafos(parrafos, titulo):
 # distintos, se aparta del dataset. El cuaderno muestra cuántos párrafos aporta cada
 # artículo al resultado y avisa si una página falla.
 #
-# El resumen comprueba si las tres categorías superan los 300 párrafos. Aquí la
-# etiqueta viene del artículo entero y el programa aplica reglas de limpieza, sin leer
-# el significado de cada párrafo.
-#
-# (En este script, ese paso está dentro de main(), al final del fichero.)
+# El resumen comprueba si las tres categorías superan los 300 párrafos. Aquí la etiqueta
+# viene del artículo entero y el programa aplica reglas de limpieza, sin leer el
+# significado de cada párrafo.
 # =============================================================================
-# ---------------------------------------------------------------------------
-# Medición del ruido
-# ---------------------------------------------------------------------------
-# La etiqueta de cada párrafo se hereda del artículo, así que hay párrafos genéricos
-# ("Ĝi estis fondita en 1950") que no hablan del tema. Como estimación automática,
-# contamos los párrafos que NO contienen ninguna raíz típica de su propia clase.
-# Es un proxy: sobreestima el ruido (un párrafo puede ser específico sin usar estas
-# raíces), así que conviene contrastarlo con una revisión manual de una muestra.
+
 RAICES_CLASE = {
     "coches": r"aŭto|aŭtomobil|ŝofor|stirad|karoseri|kombinaŭt",
     "aviones": r"aviad|aeroplan|flug|pilot|aeroport|alerono|fuzelaĝ",
     "trenes": r"trajn|lokomotiv|fervoj|vagon|\brel|stacidom|metroo|ŝinkansen|tgv",
 }
-
 
 def medir_ruido(dataset):
     tabla = []
@@ -590,22 +592,25 @@ def medir_ruido(dataset):
         tabla.append((clase, len(textos), int(sin_raiz.sum()), 100 * sin_raiz.mean()))
     return pd.DataFrame(tabla, columns=["class", "parrafos", "sin_raiz_de_clase", "porcentaje"])
 
-
 def muestra_para_revision_manual(dataset, n=50, semilla=42):
-    """Muestra aleatoria por clase para etiquetar a mano como 'especifico' o 'generico'."""
     return dataset.groupby("class", group_keys=False).apply(
         lambda g: g.sample(min(n, len(g)), random_state=semilla)
     )
 
+def comparar_con_anterior(anterior, nuevo):
+    filas_anteriores = set(zip(anterior["text"], anterior["class"]))
+    filas_nuevas = set(zip(nuevo["text"], nuevo["class"]))
+    print("\nComparación con el dataset anterior")
+    print(f"  Iguales       · {len(filas_anteriores & filas_nuevas)}")
+    print(f"  Nuevos        · {len(filas_nuevas - filas_anteriores)}")
+    print(f"  Desaparecidos · {len(filas_anteriores - filas_nuevas)}")
 
-# ---------------------------------------------------------------------------
-# Programa principal
-# ---------------------------------------------------------------------------
 CARPETA_DATOS = Path(__file__).resolve().parents[1] / "data"
 
-
 def main():
-    registros, fuentes, errores = [], [], []
+    registros = []
+    fuentes = []
+    errores = []
 
     for clase, titulos in ARTICULOS.items():
         for titulo in titulos:
@@ -614,8 +619,7 @@ def main():
                 parrafos = seleccionar_parrafos(extraer_parrafos(html, titulo), titulo)
                 if not parrafos:
                     raise ValueError("No quedaron párrafos tras la limpieza.")
-            except (requests.RequestException, ValueError) as error:
-                # Un artículo que falla no detiene el script (requisito: sobrevivir a fallos web).
+            except (requests.RequestException, ValueError, KeyError) as error:
                 errores.append((titulo, str(error)))
                 print(f"Aviso · {titulo}: {error}")
                 continue
@@ -625,45 +629,64 @@ def main():
                 registros.append((texto, clase, titulo, enlace))
 
     origen = pd.DataFrame(registros, columns=["text", "class", "articulo", "fuente"])
-    # Un párrafo que aparece con dos clases distintas es ambiguo: se descarta.
     clases_por_texto = origen.groupby("text")["class"].transform("nunique")
     origen = origen.loc[clases_por_texto.eq(1)].drop_duplicates(["text", "class"])
     origen = origen.reset_index(drop=True)
     dataset = origen[["text", "class"]]
 
-    if dataset.empty:
-        raise SystemExit("No se recuperó ningún párrafo: no se guarda nada.")
+    aportes = origen.groupby(["class", "articulo"]).size()
+    print("\nPárrafos incluidos por artículo")
+    for clase, titulo, enlace in fuentes:
+        print(f"{clase:7} · {aportes.get((clase, titulo), 0):3} · {titulo} · {enlace}")
 
-    if dataset["text"].str.contains(r"[;\r\n]|https?://|<[/a-zA-Z]", regex=True).any():
-        raise ValueError("Algún párrafo contiene separadores, enlaces o marcas de HTML.")
-
-    completo = not errores and set(dataset["class"]) == set(ARTICULOS)
-    CARPETA_DATOS.mkdir(parents=True, exist_ok=True)
-    archivo = CARPETA_DATOS / ("dataset.csv" if completo else "dataset_parcial.csv")
-
-    dataset.to_csv(archivo, sep=";", encoding="utf-8", index=False)
-    comprobacion = pd.read_csv(archivo, sep=";", encoding="utf-8", keep_default_na=False)
-    if not comprobacion.equals(dataset):
-        raise ValueError("El CSV guardado no coincide con la tabla preparada.")
-    origen.to_csv(CARPETA_DATOS / "metadata.csv", sep=";", encoding="utf-8", index=False)
-
-    print("\nPárrafos por clase")
-    print(dataset["class"].value_counts().to_string())
-    print(f"Total · {len(dataset)} · Artículos con párrafos · {origen['articulo'].nunique()}")
+    print("\nPárrafos incluidos por tema")
+    for clase in ARTICULOS:
+        print(f"{clase:7} · {dataset['class'].eq(clase).sum():3}")
+    print(f"Total · {len(dataset)}")
+    print(f"Artículos con párrafos · {origen['articulo'].nunique()}")
+    objetivo_alcanzado = all(dataset["class"].eq(clase).sum() > 300 for clase in ARTICULOS)
+    print("Objetivo de más de 300 por tema:", "alcanzado" if objetivo_alcanzado else "pendiente")
 
     print("\nEstimación de ruido (párrafos sin ninguna raíz de su clase)")
     print(medir_ruido(dataset).to_string(index=False, float_format="%.1f"))
 
-    print(f"\nGuardado · {archivo.relative_to(CARPETA_DATOS.parent)} · {len(dataset)} filas")
-    if not completo:
-        print(f"Resultado PARCIAL: {len(errores)} artículo(s) fallaron. Vuelve a ejecutar el script.")
+    if dataset.empty:
+        print("No se guardó el CSV porque no se recuperó ningún párrafo.")
+        return
 
+    completo = not errores and set(dataset["class"]) == set(ARTICULOS)
+    sufijo = "" if completo else "_parcial"
+    archivo = CARPETA_DATOS / f"dataset{sufijo}.csv"
+    archivo_metadata = CARPETA_DATOS / f"metadata{sufijo}.csv"
+    if dataset["text"].str.contains(r"[;\r\n]|https?://|<[/a-zA-Z]", regex=True).any():
+        raise ValueError("Algún párrafo contiene separadores, enlaces o marcas de HTML.")
+
+    CARPETA_DATOS.mkdir(parents=True, exist_ok=True)
+    anterior = CARPETA_DATOS / "dataset.csv"
+    if anterior.exists():
+        comparar_con_anterior(
+            pd.read_csv(anterior, sep=";", encoding="utf-8", keep_default_na=False), dataset
+        )
+
+    dataset.to_csv(archivo, sep=";", encoding="utf-8", index=False)
+    comprobacion = pd.read_csv(archivo, sep=";", encoding="utf-8", keep_default_na=False)
+    if not comprobacion.equals(dataset):
+        raise ValueError("El CSV no coincide con la tabla preparada.")
+    origen.to_csv(archivo_metadata, sep=";", encoding="utf-8", index=False)
+
+    print(f"\nArchivo guardado · {archivo.name} · {len(dataset)} filas")
+    if not completo:
+        print("Resultado parcial. Revisa los avisos y vuelve a ejecutar el cuaderno.")
+
+    print("\nUna muestra por tema (vista abreviada)")
+    muestra = dataset.groupby("class", sort=False).head(1).copy()
+    muestra["text"] = muestra["text"].str.slice(0, 100) + "…"
+    print(muestra.to_string(index=False))
 
 if __name__ == "__main__":
     main()
 
-# =============================================================================
-# Notas originales del cuaderno: guardado y procedencia
+
 # =============================================================================
 # ## 5. Guardar vehiculos.csv
 #
@@ -676,7 +699,9 @@ if __name__ == "__main__":
 # **vehiculos_parcial.csv** y muestra un aviso. Cuando se descargan todos los artículos,
 # la salida se llama **vehiculos.csv**. Para bajarla en Colab, abre **Archivos**, busca
 # el CSV y usa **Descargar** en su menú.
-#
+# =============================================================================
+
+# =============================================================================
 # ## Procedencia y revisión
 #
 # Los textos proceden de quienes contribuyen a **Wikipedia en esperanto**. El paso 4
@@ -686,9 +711,7 @@ if __name__ == "__main__":
 # [Wikipedia en esperanto](https://eo.wikipedia.org/) · [CC BY-SA
 # 4.0](https://creativecommons.org/licenses/by-sa/4.0/)
 #
-# Esta versión amplía el piloto de 15 artículos. El enunciado recomienda superar los
-# 300 párrafos por clase. Como la etiqueta procede del tema del artículo, conviene
-# revisar una muestra de cada grupo antes de entrenar el clasificador.
-#
-# Nota: en este script el archivo se guarda como data/dataset.csv (no vehiculos.csv)
-# para seguir el contrato de datos del repositorio.
+# Esta versión amplía el piloto de 15 artículos. El enunciado recomienda superar los 300
+# párrafos por clase. Como la etiqueta procede del tema del artículo, conviene revisar
+# una muestra de cada grupo antes de entrenar el clasificador.
+# =============================================================================
