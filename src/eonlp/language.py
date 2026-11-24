@@ -45,9 +45,11 @@ class Language:
                     inicios.add(token.i)
                     break
 
+        # Primero la categoría: el lematizador la necesita (un verbo cambia su
+        # terminación por -i; un sustantivo solo pierde -j y -n).
         for token in tokens:
-            token.lemma_ = lemmatize(token.text)
             token.pos_ = tag(token.text, token.i in inicios)
+            token.lemma_ = lemmatize(token.text, token.pos_)
             token.is_stop = is_stop(token.text)
 
         return Doc(texto, tokens, limites_frases)
