@@ -36,9 +36,18 @@ class Language:
         ]
         limites_frases = split_sentences([token.text for token in tokens])
 
+        # Primera palabra de cada frase (saltando comillas o paréntesis iniciales):
+        # el etiquetador no debe tomarla por nombre propio solo por su mayúscula.
+        inicios = set()
+        for inicio, fin in limites_frases:
+            for token in tokens[inicio:fin]:
+                if not token.is_punct:
+                    inicios.add(token.i)
+                    break
+
         for token in tokens:
             token.lemma_ = lemmatize(token.text)
-            token.pos_ = tag(token.text)
+            token.pos_ = tag(token.text, token.i in inicios)
             token.is_stop = is_stop(token.text)
 
         return Doc(texto, tokens, limites_frases)
