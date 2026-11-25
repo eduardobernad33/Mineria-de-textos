@@ -612,8 +612,14 @@ def main():
     fuentes = []
     errores = []
 
+    # Contador de progreso: la descarga tarda unos minutos y así se ve por qué artículo va.
+    total = sum(len(titulos) for titulos in ARTICULOS.values())
+    numero = 0
+
     for clase, titulos in ARTICULOS.items():
         for titulo in titulos:
+            numero += 1
+            print(f"[{numero:3}/{total}] {clase:7} · {titulo}", flush=True)
             try:
                 html, enlace = descargar_articulo(titulo)
                 parrafos = seleccionar_parrafos(extraer_parrafos(html, titulo), titulo)
