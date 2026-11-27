@@ -11,17 +11,11 @@ requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [
     { name = "Eduardo Bernad Soria" },
-    { name = "Compañero 2" },
-    { name = "Compañero 3" },
+    { name = "Gonzalo Olivares" },
+    { name = "Pedro Riveiro" },
 ]
-# La librería NLP no depende de ninguna librería externa (requisito: construida desde 0).
+# La librería no depende de ninguna otra: está hecha desde cero.
 dependencies = []
-
-[project.optional-dependencies]
-# Dependencias para generar el dataset (script) — no las necesita la librería.
-data = ["requests>=2.31", "beautifulsoup4>=4.12", "pandas>=2.0"]
-# Dependencias de desarrollo.
-dev = ["pytest>=7.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
