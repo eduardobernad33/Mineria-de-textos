@@ -37,7 +37,7 @@ from eonlp.tagger import tag
 TERMINACIONES_VERBO = ("as", "is", "os", "us", "u", "i")
 
 
-def crear_lemas_gramaticales() -> dict:
+def crear_lemas_gramaticales():
     """Diccionario forma -> lema para pronombres, correlativos y ordinales."""
     lemas = {}
     for entrada in cargar_vortoj():
@@ -65,7 +65,7 @@ def crear_lemas_gramaticales() -> dict:
 LEMAS_GRAMATICALES = crear_lemas_gramaticales()
 
 
-def quitar_flexion(palabra: str) -> str:
+def quitar_flexion(palabra):
     """Quita el acusativo (-n) y después el plural (-j): librojn -> libro."""
     if palabra.endswith("n") and len(palabra) > 2:
         palabra = palabra[:-1]
@@ -74,7 +74,7 @@ def quitar_flexion(palabra: str) -> str:
     return palabra
 
 
-def lemma_verbo(palabra: str) -> str:
+def lemma_verbo(palabra):
     """Cambia la terminación de tiempo o modo por -i: kantis -> kanti."""
     for final in TERMINACIONES_VERBO:
         if palabra.endswith(final):
@@ -82,7 +82,7 @@ def lemma_verbo(palabra: str) -> str:
     return palabra
 
 
-def lemmatize(word: str, pos: str = "") -> str:
+def lemmatize(word, pos=""):
     """Devuelve el lema (forma de diccionario) de una palabra.
 
     Args:
