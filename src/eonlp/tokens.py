@@ -30,7 +30,7 @@ class Token:
         like_num: True si representa un número (1950, 3,5, 1.000).
     """
 
-    def __init__(self, text: str, i: int, idx: int) -> None:
+    def __init__(self, text, i, idx):
         self.text = text
         self.i = i
         self.idx = idx
@@ -44,14 +44,14 @@ class Token:
         self.like_num = text.replace(".", "").replace(",", "").isdigit()
         self.is_punct = not any(caracter.isalnum() for caracter in text)
 
-    def __len__(self) -> int:
+    def __len__(self):
         """Número de caracteres del token."""
         return len(self.text)
 
-    def __str__(self) -> str:
+    def __str__(self):
         return self.text
 
-    def __repr__(self) -> str:
+    def __repr__(self):
         return self.text
 
 
@@ -64,13 +64,13 @@ class Span:
         end: posición siguiente al último token (como en los slices de Python).
     """
 
-    def __init__(self, doc: "Doc", start: int, end: int) -> None:
+    def __init__(self, doc, start, end):
         self.doc = doc
         self.start = start
         self.end = end
 
     @property
-    def text(self) -> str:
+    def text(self):
         """Texto original del trozo, con sus espacios."""
         if self.start >= self.end:
             return ""
@@ -78,22 +78,22 @@ class Span:
         ultimo = self.doc[self.end - 1]
         return self.doc.text[primero.idx: ultimo.idx + len(ultimo.text)]
 
-    def _tokens(self) -> list:
+    def _tokens(self):
         return self.doc.tokens[self.start:self.end]
 
     def __iter__(self):
         return iter(self._tokens())
 
-    def __len__(self) -> int:
+    def __len__(self):
         return self.end - self.start
 
-    def __getitem__(self, posicion: int) -> Token:
+    def __getitem__(self, posicion):
         return self._tokens()[posicion]
 
-    def __str__(self) -> str:
+    def __str__(self):
         return self.text
 
-    def __repr__(self) -> str:
+    def __repr__(self):
         return self.text
 
 
@@ -106,15 +106,8 @@ class Doc:
         sents: lista de frases, cada una como un Span.
     """
 
-    def __init__(self, text: str, tokens: list, limites_frases: list = None) -> None:
-        """Crea el Doc.
-
-        Args:
-            text: el texto original.
-            tokens: lista de Tokens.
-            limites_frases: lista de pares (inicio, fin) con las posiciones de los
-                tokens de cada frase. Si no se indica, todo el texto es una frase.
-        """
+    def __init__(self, text, tokens, limites_frases=None):
+        # limites_frases: pares (inicio, fin) de cada frase; si no se da, todo es una frase
         self.text = text
         self.tokens = tokens
         if limites_frases is None:
@@ -122,14 +115,14 @@ class Doc:
         self._limites_frases = limites_frases
 
     @property
-    def sents(self) -> list:
+    def sents(self):
         """Frases del documento, cada una como un Span (igual que doc.sents en spaCy)."""
         return [Span(self, inicio, fin) for inicio, fin in self._limites_frases]
 
     def __iter__(self):
         return iter(self.tokens)
 
-    def __len__(self) -> int:
+    def __len__(self):
         """Número de tokens."""
         return len(self.tokens)
 
@@ -140,8 +133,8 @@ class Doc:
             return Span(self, inicio, fin)
         return self.tokens[posicion]
 
-    def __str__(self) -> str:
+    def __str__(self):
         return self.text
 
-    def __repr__(self) -> str:
+    def __repr__(self):
         return self.text
