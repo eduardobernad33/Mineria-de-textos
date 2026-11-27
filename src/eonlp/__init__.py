@@ -18,6 +18,6 @@ __version__ = "0.1.0"
 __all__ = ["load", "Language", "Doc", "Span", "Token", "__version__"]
 
 
-def load() -> Language:
+def load():
     """Devuelve el analizador de esperanto listo para usar (equivale a spacy.load)."""
     return Language()

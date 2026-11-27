@@ -67,7 +67,7 @@ POS_CORRELATIVO = {
 }
 
 
-def crear_lexicon() -> dict:
+def crear_lexicon():
     """Diccionario palabra -> etiqueta para todas las palabras gramaticales."""
     lexicon = {}
     for entrada in cargar_vortoj():
@@ -107,12 +107,12 @@ def crear_lexicon() -> dict:
 LEXICON = crear_lexicon()
 
 
-def _es_numero(word: str) -> bool:
+def _es_numero(word):
     """Sin letras y con alguna cifra: 1950, 3,5, 1.000, 0-4-0, 16⅔."""
     return not any(c.isalpha() for c in word) and any(c.isnumeric() for c in word)
 
 
-def _por_prefijo(palabra: str) -> str:
+def _por_prefijo(palabra):
     """malpli -> la etiqueta de pli; ekde -> la de de."""
     for prefijo in PREFIJOS:
         resto = palabra[len(prefijo):]
@@ -121,7 +121,7 @@ def _por_prefijo(palabra: str) -> str:
     return ""
 
 
-def _es_nombre_propio(word: str, inicio_frase: bool) -> bool:
+def _es_nombre_propio(word, inicio_frase):
     tiene_letras = any(c.isalpha() for c in word)
     tiene_cifras = any(c.isdigit() for c in word)
     if tiene_letras and tiene_cifras and word[0].isupper():      # A380, F-16, B-52
@@ -131,7 +131,7 @@ def _es_nombre_propio(word: str, inicio_frase: bool) -> bool:
     return word[0].isupper() and not inicio_frase                 # Boeing, Parizo
 
 
-def _por_terminacion(word: str) -> str:
+def _por_terminacion(word):
     """Categoría según la terminación (regla de la gramática de la guía)."""
     palabra = word.lower()
     if len(palabra) < 3:
@@ -151,7 +151,7 @@ def _por_terminacion(word: str) -> str:
     return ""
 
 
-def tag(word: str, inicio_frase: bool = False) -> str:
+def tag(word, inicio_frase=False):
     """Devuelve la categoría gramatical universal de una palabra.
 
     Args:

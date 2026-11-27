@@ -20,15 +20,8 @@ from eonlp.tokens import Doc, Token
 class Language:
     """Analizador de textos en esperanto. Llamarlo con un texto devuelve un Doc."""
 
-    def __call__(self, text: str) -> Doc:
-        """Analiza un texto.
-
-        Args:
-            text: texto en esperanto.
-
-        Returns:
-            Un Doc con los tokens analizados y sus frases.
-        """
+    def __call__(self, text):
+        """Analiza un texto en esperanto y devuelve un Doc."""
         texto = normalize(text)
         tokens = [
             Token(contenido, i, posicion)

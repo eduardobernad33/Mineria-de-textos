@@ -28,7 +28,7 @@ PREFIJOS_CORRELATIVOS = ["ki", "ti", "i", "ĉi", "neni"]
 TERMINACIONES_CORRELATIVOS = ["o", "u", "a", "es", "e", "am", "al", "el", "om"]
 
 
-def cargar_vortoj(archivo: Path = ARCHIVO_VORTOJ) -> list:
+def cargar_vortoj(archivo=ARCHIVO_VORTOJ):
     """Lee el léxico de la guía (JSON, tema 1.4) y devuelve la lista de palabras.
 
     Cada palabra es un diccionario con, entre otras, las claves "vorto" (la
@@ -38,23 +38,23 @@ def cargar_vortoj(archivo: Path = ARCHIVO_VORTOJ) -> list:
         return json.load(fichero)["vortoj"]
 
 
-def formas_pronombre(pronombre: str) -> list:
+def formas_pronombre(pronombre):
     """mi -> mi, min, mia, miaj, mian, miajn."""
     return [pronombre + final for final in ["", "n", "a", "aj", "an", "ajn"]]
 
 
-def formas_verbo(infinitivo: str) -> list:
+def formas_verbo(infinitivo):
     """esti -> esti, estas, estis, estos, estus, estu."""
     raiz = infinitivo[:-1]
     return [raiz + final for final in TERMINACIONES_VERBO]
 
 
-def formas_numero(cardinal: str) -> list:
+def formas_numero(cardinal):
     """unu -> unu, unua, unuaj, unuan, unuajn (el ordinal es el cardinal + -a)."""
     return [cardinal + final for final in ["", "a", "aj", "an", "ajn"]]
 
 
-def formas_correlativos() -> list:
+def formas_correlativos():
     """Las 45 palabras de la tabla y sus formas con -j / -n.
 
     Según la gramática de la guía: los de -u y -a toman -j y -n (kiuj, tiujn),
@@ -72,7 +72,7 @@ def formas_correlativos() -> list:
     return formas
 
 
-def crear_stop_words(vortoj: list) -> set:
+def crear_stop_words(vortoj):
     """Construye el conjunto completo de palabras vacías a partir del léxico."""
     stop_words = set()
     for entrada in vortoj:
@@ -94,7 +94,7 @@ def crear_stop_words(vortoj: list) -> set:
 STOP_WORDS = crear_stop_words(cargar_vortoj())
 
 
-def is_stop(word: str) -> bool:
+def is_stop(word):
     """True si la palabra es una palabra vacía (sin distinguir mayúsculas).
 
     Examples:

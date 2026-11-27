@@ -30,7 +30,7 @@ SISTEMA_X = {
 LETRAS_CON_ACENTO = "ĉĝĥĵŝŭĈĜĤĴŜŬ"
 
 
-def normalize(text: str) -> str:
+def normalize(text):
     """Devuelve el texto en una forma única para que la misma palabra se escriba igual.
 
     - Unicode NFC: una letra como "ĉ" puede venir como un solo carácter o como
@@ -87,7 +87,7 @@ PATRON_TOKEN = re.compile(
 )
 
 
-def tokenize(text: str) -> list:
+def tokenize(text):
     """Divide un texto en tokens.
 
     Args:
@@ -115,12 +115,12 @@ CIERRES = {")", "]", "»", "”", '"', "'"}
 ABREVIATURAS_FINALES = {"k.t.p.", "ktp."}
 
 
-def _es_inicial(token: str) -> bool:
+def _es_inicial(token):
     """True si el token es una sola letra mayúscula, como la "J" de "J. Smith"."""
     return len(token) == 1 and token.isupper()
 
 
-def split_sentences(tokens: list) -> list:
+def split_sentences(tokens):
     """Agrupa los tokens en frases.
 
     Una frase termina en ".", "!", "?" o "...", salvo que el punto vaya detrás de
