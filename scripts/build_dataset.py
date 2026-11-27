@@ -1,25 +1,5 @@
-# =============================================================================
-# # Vehículos · Construcción del dataset
-# **Minería de Textos · Fase 1 · Versión ampliada**
-#
-# Este cuaderno crea una tabla de párrafos en esperanto sobre coches, aviones y trenes.
-# Cada fila tiene el párrafo original limpio y el tema que le corresponde.
-#
-# **En Colab:** abre este archivo y selecciona **Entorno de ejecución → Ejecutar todo**.
-# Al terminar, la última celda indica el nombre del archivo guardado. Búscalo en el
-# panel **Archivos** de la izquierda. Cada sección explica qué hace la celda de código
-# que aparece debajo.
-# =============================================================================
-
-# =============================================================================
-# ## 1. Elegir de dónde salen los textos
-#
-# La lista conserva los artículos del piloto y añade nuevas páginas de Wikipedia en
-# esperanto. Al leer un artículo del grupo de coches, el programa pone la etiqueta
-# **coches** a sus párrafos. Los identificadores de revisión permiten recuperar la misma
-# versión de cada artículo. Un título nuevo se puede añadir a la lista para consultar su
-# versión actual.
-# =============================================================================
+# Genera data/dataset.csv (text;class) y data/metadata.csv a partir de Wikipedia en esperanto.
+# Uso: python scripts/build_dataset.py
 
 import random
 import re
@@ -31,6 +11,7 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
+# Artículos de cada clase y revisión fija (oldid) de cada uno, para que el dataset sea reproducible
 ARTICULOS = {'coches': ['Aŭto',
             'Toyota Prius',
             'Trabant',
@@ -354,18 +335,7 @@ ARTICULOS_PILOTO = ('Aŭto',
 MAXIMO_POR_ARTICULO = 32
 
 
-# =============================================================================
-# ## 2. Descargar las páginas de Wikipedia
-#
-# El programa abre la página de cada artículo y conserva su texto principal. El número
-# de revisión
-# permite volver a consultar la versión usada. Esto evita que una edición posterior
-# cambie el texto del
-# dataset. Los enlaces de las fuentes se muestran en el paso 4.
-#
-# [Ayuda de MediaWiki sobre enlaces
-# permanentes](https://www.mediawiki.org/wiki/Help:Permanent_link)
-# =============================================================================
+# Descarga de cada artículo con la API de Wikipedia (action=parse)
 
 WIKIPEDIA = "https://eo.wikipedia.org"
 API_WIKIPEDIA = f"{WIKIPEDIA}/w/api.php"
@@ -428,26 +398,9 @@ def descargar_articulo(titulo):
     return html, enlace
 
 
-# =============================================================================
-# ## 3. Separar y limpiar los párrafos
-#
-# Beautiful Soup lee la estructura de la página. Así podemos quedarnos con los párrafos
-# y saltar tablas, fichas, listas, imágenes y referencias. Si una palabra tiene un
-# enlace, conservamos la palabra y quitamos el enlace. Sustituimos los puntos y coma que
-# estén dentro del texto por comas, porque el punto y coma se usa para separar las dos
-# columnas del archivo.
-#
-# Para preparar el texto, descartamos bloques de menos de seis palabras, frases que solo
-# presentan una lista y, en el artículo *Trajno*, la sección sobre otros significados de
-# la palabra «tren». También excluimos pasajes concretos del artículo de coches
-# eléctricos que tratan de trolebuses, furgonetas o carritos de golf. Estos filtros se
-# aplican al descargar los artículos. Todavía puede quedar algún párrafo demasiado
-# general que convenga revisar a mano.
-#
-# En las páginas más amplias, seleccionamos los bloques sobre vehículos. Limitamos a 32
-# párrafos por artículo nuevo para repartir el peso entre más fuentes. La selección usa
-# siempre la misma semilla, 42, para poder repetirla.
-# =============================================================================
+# Limpieza: párrafos <p> sin tablas, fichas, referencias ni secciones finales.
+# En páginas generales solo se guardan los párrafos sobre vehículos de su clase
+# y como máximo 32 por artículo (semilla 42).
 
 SECCIONES_OMITIDAS = {
     "bildaro", "bibliografio", "eksteraj ligiloj", "fontoj", "galerio",
@@ -565,18 +518,7 @@ def seleccionar_parrafos(parrafos, titulo):
     return parrafos
 
 
-# =============================================================================
-# ## 4. Poner el tema y comprobar los resultados
-#
-# Recorremos los artículos de cada grupo, añadimos el tema a cada párrafo y quitamos
-# textos repetidos dentro de una clase. Si el mismo párrafo aparece con dos temas
-# distintos, se aparta del dataset. El cuaderno muestra cuántos párrafos aporta cada
-# artículo al resultado y avisa si una página falla.
-#
-# El resumen comprueba si las tres categorías superan los 300 párrafos. Aquí la etiqueta
-# viene del artículo entero y el programa aplica reglas de limpieza, sin leer el
-# significado de cada párrafo.
-# =============================================================================
+# Etiquetado, duplicados, medida de ruido y guardado del CSV
 
 RAICES_CLASE = {
     "coches": r"aŭto|aŭtomobil|ŝofor|stirad|karoseri|kombinaŭt",
@@ -591,19 +533,6 @@ def medir_ruido(dataset):
         sin_raiz = ~textos.str.contains(raices, case=False, regex=True)
         tabla.append((clase, len(textos), int(sin_raiz.sum()), 100 * sin_raiz.mean()))
     return pd.DataFrame(tabla, columns=["class", "parrafos", "sin_raiz_de_clase", "porcentaje"])
-
-def muestra_para_revision_manual(dataset, n=50, semilla=42):
-    return dataset.groupby("class", group_keys=False).apply(
-        lambda g: g.sample(min(n, len(g)), random_state=semilla)
-    )
-
-def comparar_con_anterior(anterior, nuevo):
-    filas_anteriores = set(zip(anterior["text"], anterior["class"]))
-    filas_nuevas = set(zip(nuevo["text"], nuevo["class"]))
-    print("\nComparación con el dataset anterior")
-    print(f"  Iguales       · {len(filas_anteriores & filas_nuevas)}")
-    print(f"  Nuevos        · {len(filas_nuevas - filas_anteriores)}")
-    print(f"  Desaparecidos · {len(filas_anteriores - filas_nuevas)}")
 
 CARPETA_DATOS = Path(__file__).resolve().parents[1] / "data"
 
@@ -668,11 +597,6 @@ def main():
         raise ValueError("Algún párrafo contiene separadores, enlaces o marcas de HTML.")
 
     CARPETA_DATOS.mkdir(parents=True, exist_ok=True)
-    anterior = CARPETA_DATOS / "dataset.csv"
-    if anterior.exists():
-        comparar_con_anterior(
-            pd.read_csv(anterior, sep=";", encoding="utf-8", keep_default_na=False), dataset
-        )
 
     dataset.to_csv(archivo, sep=";", encoding="utf-8", index=False)
     comprobacion = pd.read_csv(archivo, sep=";", encoding="utf-8", keep_default_na=False)
@@ -691,33 +615,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-# =============================================================================
-# ## 5. Guardar vehiculos.csv
-#
-# Exportamos dos columnas llamadas **text** y **class**. Entre ambas va un punto y coma.
-# Usamos **UTF-8** para conservar letras del esperanto como **ĉ**, **ŝ** y **ŭ**. El
-# cuaderno vuelve a abrir el archivo para comprobar que se lee exactamente la tabla que
-# acabamos de construir.
-#
-# Si algún artículo falla y se obtienen párrafos, el cuaderno guarda
-# **vehiculos_parcial.csv** y muestra un aviso. Cuando se descargan todos los artículos,
-# la salida se llama **vehiculos.csv**. Para bajarla en Colab, abre **Archivos**, busca
-# el CSV y usa **Descargar** en su menú.
-# =============================================================================
-
-# =============================================================================
-# ## Procedencia y revisión
-#
-# Los textos proceden de quienes contribuyen a **Wikipedia en esperanto**. El paso 4
-# muestra los enlaces a las revisiones utilizadas. La adaptación consiste en seleccionar
-# párrafos, limpiar marcas y añadir una etiqueta de tema. Al compartir el CSV,
-# acompañadlo de este cuaderno para conservar la atribución y el enlace a la licencia.
-# [Wikipedia en esperanto](https://eo.wikipedia.org/) · [CC BY-SA
-# 4.0](https://creativecommons.org/licenses/by-sa/4.0/)
-#
-# Esta versión amplía el piloto de 15 artículos. El enunciado recomienda superar los 300
-# párrafos por clase. Como la etiqueta procede del tema del artículo, conviene revisar
-# una muestra de cada grupo antes de entrenar el clasificador.
-# =============================================================================
